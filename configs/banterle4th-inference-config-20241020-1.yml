@@ -1,7 +1,7 @@
 device: 'cuda'
 
-name: 'banterle-4th-real-to-simulation_UNET-DLG-5-lvl_exp_241020-155315'
-load_iter: 34902
+name: 'banterle-4th-real-to-simulation_UNET-UNET_exp_241020-145325'
+load_iter: 994708
 phase: 'test'
 data_dir:  '/scratch/park/data/deepclear/'
 checkpoints_dir: '/scratch/park/checkpoints/models/DeepClarity'

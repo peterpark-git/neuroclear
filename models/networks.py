@@ -32,6 +32,9 @@ def get_norm_layer(norm_type='instance', dimension =3):
 
     elif norm_type == 'instance':
         norm_layer = functools.partial(instance_norm(dimension), affine=False, track_running_stats=False)
+    
+    elif norm_type =='instance_with_trackstats':
+        norm_layer = functools.partial(instance_norm(dimension), affine=False, track_running_stats=True)
 
     elif norm_type == 'spectral':
         norm_layer = lambda x: Identity()
