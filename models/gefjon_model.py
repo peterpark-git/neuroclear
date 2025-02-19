@@ -4,13 +4,13 @@ import numpy as np
 from .base_model import BaseModel
 from . import networks
 
-class YmirModel(BaseModel):
+class GefjonModel(BaseModel):
     """
     This model uses high-resolution reference from another source.
     The model takes a 3D image cube as an input and outputs a 3D image stack that correspond to the output cube.
     Note that the loss functions are readjusted for cube dataset.
 
-    This model is a successor to Tuisto; this model adds another cycle loss.
+    This model is a successor to Ymir; this model only considers single-volume enhancement. 
 
     GAN Loss is calculated in 2D between axial image and lateral image. -> Discriminator takes 2D images
                                                                         -> Generator takes 3D images.
@@ -59,7 +59,7 @@ class YmirModel(BaseModel):
             self.projection_depth_custom = opt.projection_depth
         else:
             self.max_projection_depth = opt.projection_depth
-            self.min_projection_depth = 2
+            self.min_projection_depth = opt.min_projection_depth
 
         self.sample_proj = opt.projection_sampling # how many times do we sample?
 
@@ -142,17 +142,12 @@ class YmirModel(BaseModel):
         The option 'direction' can be used to swap domain A and domain B.
         """
         AtoB = self.opt.direction == 'AtoB'
-        self.real_src = input['src' if AtoB else 'tgt'].to(self.device)
-        self.real_tgt = input['tgt' if AtoB else 'src'].to(self.device)
+        self.real_src_tgt = input['src_tgt'].to(self.device)
 
-        # if self.validate:
-        #     self.real_gt = input['gt'].to(self.device)
-        #     self.image_paths_gt = input['gt_paths']
+        self.image_paths_src = input['src_tgt_paths']
+        self.image_paths_tgt = input['src_tgt_paths']
 
-        self.image_paths_src = input['src_paths' if AtoB else 'tgt_paths']
-        self.image_paths_tgt = input['tgt_paths' if AtoB else 'src_paths']
-
-        self.cube_shape = self.real_src.shape
+        self.cube_shape = self.real_src_tgt.shape
         self.num_slice = self.cube_shape[-3]
 
         if not (self.randomize_projection_depth):
@@ -164,7 +159,7 @@ class YmirModel(BaseModel):
         """Run forward pass; called by both functions <optimize_parameters> and <test>.
         In this version, we iterate through each slice in a cube.
         """
-        self.fake = self.netG_A(self.real_src)  # G_A(A)
+        self.fake = self.netG_A(self.real_src_tgt)  # G_A(A)
         self.rec = self.netG_B(self.fake)  # G_B(G_A(A))
         self.fake_2 = self.netG_A(self.rec) # fake version of the original fake volume 
 
@@ -197,29 +192,29 @@ class YmirModel(BaseModel):
         return loss_D
 
     def backward_D_A_lateral(self):
-        self.loss_D_A_lateral = self.backward_D_projection(self.netD_A_lateral, self.real_tgt, self.fake, self.lateral_axis,
+        self.loss_D_A_lateral = self.backward_D_projection(self.netD_A_lateral, self.real_src_tgt, self.fake, self.lateral_axis,
                                                       self.lateral_axis)  # comparing XY_original to XY_fake_MIP
 
     def backward_D_A_axial(self): # compares real_tgt XY slice image and fake axial MIP image.
         """Calculate GAN loss for discriminator D_A"""
-        self.loss_D_A_axial_1 = self.backward_D_projection(self.netD_A_axial, self.real_tgt, self.fake, self.lateral_axis,
+        self.loss_D_A_axial_1 = self.backward_D_projection(self.netD_A_axial, self.real_src_tgt, self.fake, self.lateral_axis,
                                                       self.axial_1_axis)  # comparing XY_original to YZ_fake
 
-        self.loss_D_A_axial_2 = self.backward_D_projection(self.netD_A_axial, self.real_tgt, self.fake, self.lateral_axis,
+        self.loss_D_A_axial_2 = self.backward_D_projection(self.netD_A_axial, self.real_src_tgt, self.fake, self.lateral_axis,
                                                       self.axial_2_axis)
 
         self.loss_D_A_axial = (self.loss_D_A_axial_1 + self.loss_D_A_axial_2)*0.5
 
     def backward_D_B_lateral(self):
-        self.loss_D_B_lateral = self.backward_D_projection(self.netD_B_lateral, self.real_src, self.rec, self.lateral_axis,
+        self.loss_D_B_lateral = self.backward_D_projection(self.netD_B_lateral, self.real_src_tgt, self.rec, self.lateral_axis,
                                                       self.lateral_axis)  # comparing XY_original to XY_reconstructed
 
     def backward_D_B_axial(self): # compares real_tgt axial slice image and fake axial slice image.
         """Calculate GAN loss for discriminator D_B, which compares the original and the reconstructed. """
-        self.loss_D_B_axial_1 = self.backward_D_projection(self.netD_B_axial, self.real_src, self.rec, self.axial_1_axis,
+        self.loss_D_B_axial_1 = self.backward_D_projection(self.netD_B_axial, self.real_src_tgt, self.rec, self.axial_1_axis,
                                                       self.axial_1_axis)  # comparing YZ_original to YZ_reconstructed
 
-        self.loss_D_B_axial_2 = self.backward_D_projection(self.netD_B_axial, self.real_src, self.rec, self.axial_2_axis,
+        self.loss_D_B_axial_2 = self.backward_D_projection(self.netD_B_axial, self.real_src_tgt, self.rec, self.axial_2_axis,
                                                       self.axial_2_axis)  # comparing YZ_original to YZ_reconstructed
 
         self.loss_D_B_axial = (self.loss_D_B_axial_1 + self.loss_D_B_axial_2)*0.5
@@ -248,7 +243,7 @@ class YmirModel(BaseModel):
         self.loss_G_B = self.loss_G_B_lateral + self.loss_G_B_axial * 0.5
 
         # This model only includes forward cycle loss || G_B(G_A(A)) - A||
-        self.loss_cycle = self.criterionCycle(self.rec, self.real_src) * lambda_A
+        self.loss_cycle = self.criterionCycle(self.rec, self.real_src_tgt) * lambda_A
         self.loss_cycle_B = self.criterionCycle(self.fake, self.fake_2) * lambda_A
         # if self.validate:
         #     # calculate validation losses

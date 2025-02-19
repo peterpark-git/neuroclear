@@ -41,6 +41,8 @@ class BaseOptions():
             self.continue_train = False 
         if not hasattr(self, 'verbose'):
             self.verbose = False 
+        if not hasattr(self, 'randomize_projection_depth'):
+            self.verbose = False 
 
         setattr(self, 'time', self.time)
         if self.isTrain:

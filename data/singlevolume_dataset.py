@@ -32,9 +32,15 @@ class SingleVolumeDataset(BaseDataset):
 
         btoA = self.opt.direction == 'BtoA'
         self.transform_A = get_transform(self.opt)
+        self.epoch_length = int(self.aug_rotate_freq * 2327 * 0.25) # how many iterations per epoch? 2327 is minimum iterations to cover all angles
 
         self.img_vol_rotated = self.img_vol # initialize it as not rotated. 
         self.isTrain = opt.isTrain
+
+        self.rotate3D = 'random3Drotate' in opt.preprocess
+        if self.rotate3D:
+            print ("The dataloader will apply 3D rotation as part of data augmentation. This will slow down the data loading.")
+    
 
     def __getitem__(self, index):
 
@@ -46,7 +52,7 @@ class SingleVolumeDataset(BaseDataset):
             self.img_vol_rotated = rotate_clean_3D_xy(self.img_vol, angle) # 3D rotate at a random angle 
         
         A = self.transform_A(self.img_vol_rotated)
-        return {'A': A, 'A_paths': self.img_path}
+        return {'src_tgt': A, 'src_tgt_paths': self.img_path}
         
     def __len__(self):
         """Return the total number of images in the dataset.
@@ -56,4 +62,4 @@ class SingleVolumeDataset(BaseDataset):
         """
 
         # each epoch is 10 images.
-        return int(10)
+        return self.epoch_length
